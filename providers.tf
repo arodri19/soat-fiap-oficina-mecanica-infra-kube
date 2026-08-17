@@ -18,6 +18,10 @@ terraform {
       source  = "hashicorp/random"
       version = "~> 3.6"
     }
+    newrelic = {
+      source  = "newrelic/newrelic"
+      version = "~> 3.43"
+    }
   }
 
   # Valores injetados via -backend-config no CI/CD (mesmo padrão do antigo infra/ do
@@ -59,4 +63,10 @@ provider "helm" {
     cluster_ca_certificate = base64decode(module.eks.cluster_ca_certificate)
     token                  = data.aws_eks_cluster_auth.this.token
   }
+}
+
+provider "newrelic" {
+  account_id = var.newrelic_account_id
+  api_key    = var.newrelic_api_key
+  region     = var.newrelic_region
 }

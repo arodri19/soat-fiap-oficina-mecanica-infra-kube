@@ -10,3 +10,10 @@ node_max_size      = 1
 
 kong_namespace          = "kong"
 kong_proxy_service_type = "LoadBalancer"
+
+# newrelic_account_id  = definido via TF_VAR_newrelic_account_id
+# newrelic_api_key     = definido via TF_VAR_newrelic_api_key (User API Key, NRAK-...)
+# newrelic_license_key = definido via TF_VAR_newrelic_license_key (INGEST-LICENSE...)
+newrelic_region              = "US"
+newrelic_app_name            = "oficina-mecanica-api"
+newrelic_notification_email  = "time-oficina@example.com"

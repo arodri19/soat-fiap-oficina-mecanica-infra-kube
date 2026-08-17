@@ -19,6 +19,22 @@ Infraestrutura como código (Terraform) para o cluster Kubernetes da oficina mec
    - O Proxy do Kong (porta de entrada do tráfego roteado às APIs) é exposto conforme
      `kong_proxy_service_type` (`ClusterIP`, `NodePort` ou `LoadBalancer`; padrão `LoadBalancer`).
 
+## Observabilidade (New Relic)
+
+- **Monitoramento do cluster** (`newrelic-k8s.tf`) — chart oficial `newrelic/nri-bundle`
+  (infraestrutura + kube-state-metrics + Prometheus), cobrindo CPU/memória do cluster.
+- **Alertas** (`newrelic-alerts.tf`) — policy + condição NRQL disparando quando erros nas
+  rotas `/orders` da aplicação ultrapassam o limite, notificando por e-mail via workflow.
+- **Dashboard** (`newrelic-dashboard.tf`) — volume diário de OS, tempo médio de execução por
+  status, erros/falhas nas integrações e latência das APIs. As métricas de negócio (volume e
+  tempo por status) vêm de eventos customizados (`OrderCreated`/`OrderStatusChanged`) emitidos
+  pelo agente APM da aplicação — ver
+  [`src/infrastructure/monitoring/newrelicEvents.js`](https://github.com/arodri19/soat-fiap-oficina-mecanica/blob/main/src/infrastructure/monitoring/newrelicEvents.js)
+  no repositório `soat-fiap-oficina-mecanica`.
+- **Healthcheck/uptime** são cobertos pelas `readinessProbe`/`livenessProbe` do Kubernetes
+  (`GET /health`, no próprio repositório da aplicação) — não há um monitor Synthetics público
+  aqui porque o `/health` só é exposto dentro do cluster (via Kong, se uma rota for configurada).
+
 ## Uso
 
 ```bash

@@ -97,3 +97,45 @@ variable "konga_storage_size" {
   type        = string
   default     = "1Gi"
 }
+
+# ── Observabilidade (New Relic) ─────────────────────────────────────────────────
+
+variable "newrelic_account_id" {
+  description = "Account ID da New Relic"
+  type        = number
+}
+
+variable "newrelic_api_key" {
+  description = "User API Key da New Relic (NRAK-...), usada pelo provider Terraform para criar policies/dashboards"
+  type        = string
+  sensitive   = true
+}
+
+variable "newrelic_region" {
+  description = "Região da conta New Relic: US ou EU"
+  type        = string
+  default     = "US"
+}
+
+variable "newrelic_license_key" {
+  description = "License key da New Relic (INGEST-LICENSE), usada pelo agente de monitoramento do Kubernetes"
+  type        = string
+  sensitive   = true
+}
+
+variable "newrelic_app_name" {
+  description = "Nome da aplicação no New Relic APM — deve bater com NEW_RELIC_APP_NAME configurado no repositório soat-fiap-oficina-mecanica"
+  type        = string
+  default     = "oficina-mecanica-api"
+}
+
+variable "newrelic_k8s_chart_version" {
+  description = "Versão do chart Helm newrelic/nri-bundle (monitoramento de CPU/memória do cluster)"
+  type        = string
+  default     = "5.0.94"
+}
+
+variable "newrelic_notification_email" {
+  description = "E-mail que recebe os alertas de falha no processamento de ordens de serviço"
+  type        = string
+}

@@ -69,3 +69,10 @@ output "konga_service" {
   description = "DNS interno do Konga (UI de administração). Use kubectl port-forward para acessar localmente."
   value       = "konga.${kubernetes_namespace.kong.metadata[0].name}.svc.cluster.local:1337"
 }
+
+# ── Observabilidade (New Relic) ─────────────────────────────────────────────────
+
+output "newrelic_dashboard_url" {
+  description = "Link do dashboard (volume de OS, tempo médio por status, erros, latência)"
+  value       = newrelic_one_dashboard.oficina.permalink
+}
