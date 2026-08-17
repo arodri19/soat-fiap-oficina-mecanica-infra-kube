@@ -2,6 +2,29 @@
 
 Infraestrutura como código (Terraform) para o cluster Kubernetes da oficina mecânica.
 
+## Arquitetura deste repositório
+
+```mermaid
+flowchart TB
+    subgraph AWS["AWS"]
+        subgraph VPC["VPC (vpc.tf)"]
+            subgraph EKS["Cluster EKS (eks.tf)"]
+                kong["Kong (kong.tf)<br/>+ Postgres dedicado"]
+                konga["Konga (konga.tf)"]
+                nr["New Relic nri-bundle<br/>(newrelic-k8s.tf)"]
+            end
+        end
+    end
+    nrcloud["New Relic<br/>(alertas + dashboard)"]
+
+    konga -->|Admin API| kong
+    nr -->|métricas do cluster| nrcloud
+    kong -->|outputs: kong_proxy_service,<br/>kong_admin_service| appRepo["soat-fiap-oficina-mecanica<br/>(rotas configuradas via Konga)"]
+
+    VPC -->|outputs: vpc_id,<br/>private_subnet_ids,<br/>security groups| dataRepo["soat-fiap-oficina-mecanica-infra-data<br/>via terraform_remote_state"]
+    VPC -->|idem| serverlessRepo["soat-fiap-oficina-mecanica-serverless<br/>via terraform_remote_state"]
+```
+
 ## O que este repositório provisiona
 
 1. **Rede** (`vpc.tf`) — VPC, subnets públicas/privadas, Internet Gateway, NAT Gateway.
