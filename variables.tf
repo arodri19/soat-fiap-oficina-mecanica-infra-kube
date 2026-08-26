@@ -98,6 +98,19 @@ variable "konga_storage_size" {
   default     = "1Gi"
 }
 
+# ── Rotas autenticadas (plugin JWT) ─────────────────────────────────────────────
+
+variable "tf_state_bucket" {
+  description = "Bucket S3 onde o state do repositório serverless está armazenado (lê o output function_url para configurar a rota no Kong)."
+  type        = string
+}
+
+variable "jwt_secret" {
+  description = "Segredo HS256 usado pelo plugin jwt do Kong para validar os tokens — deve ser o MESMO configurado no repositório serverless (TF_VAR_jwt_secret)."
+  type        = string
+  sensitive   = true
+}
+
 # ── Observabilidade (New Relic) ─────────────────────────────────────────────────
 
 variable "newrelic_account_id" {

@@ -31,6 +31,13 @@ resource "helm_release" "kong" {
       # Chart provisiona um Postgres (bitnami) dedicado como dependência quando habilitado.
       postgresql = {
         enabled = true
+        # A tag pinada pelo chart não está mais disponível em docker.io/bitnami/* (Bitnami
+        # passou a publicar apenas a tag mais recente de cada branch nesse repositório
+        # público); as tags antigas ficaram em docker.io/bitnamilegacy/*.
+        image = {
+          registry   = "docker.io"
+          repository = "bitnamilegacy/postgresql"
+        }
         auth = {
           username = "kong"
           password = random_password.kong_postgres.result

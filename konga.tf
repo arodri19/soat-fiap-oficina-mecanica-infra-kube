@@ -31,6 +31,9 @@ resource "kubernetes_persistent_volume_claim" "konga" {
       }
     }
   }
+
+  # StorageClass é WaitForFirstConsumer; só binda quando o Deployment (que depende desta PVC) a referencia.
+  wait_until_bound = false
 }
 
 resource "kubernetes_deployment" "konga" {
@@ -67,9 +70,11 @@ resource "kubernetes_deployment" "konga" {
             container_port = 1337
           }
 
+          # NODE_ENV=production desativaria a conexão "sqlite" (definida só no ambiente
+          # development do Sails.js), incompatível com o DB_ADAPTER=sqlite abaixo.
           env {
             name  = "NODE_ENV"
-            value = "production"
+            value = "development"
           }
 
           # Estado da UI (usuários, snapshots) fica em SQLite local, persistido via PVC.
