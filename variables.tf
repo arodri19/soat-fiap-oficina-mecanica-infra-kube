@@ -109,6 +109,13 @@ variable "jwt_secret" {
   description = "Segredo HS256 usado pelo plugin jwt do Kong para validar os tokens — deve ser o MESMO configurado no repositório serverless (TF_VAR_jwt_secret)."
   type        = string
   sensitive   = true
+  default     = "" # só é lido quando enable_kong_jwt_routes = true
+}
+
+variable "enable_kong_jwt_routes" {
+  description = "Liga as rotas do Kong (login público + rota protegida por JWT) apontando para a Lambda do repositório serverless. Deixe false na 1ª aplicação (bootstrap) — o output function_url do serverless ainda não existe — e mude para true numa 2ª aplicação, depois que o serverless já estiver implantado."
+  type        = bool
+  default     = false
 }
 
 # ── Observabilidade (New Relic) ─────────────────────────────────────────────────

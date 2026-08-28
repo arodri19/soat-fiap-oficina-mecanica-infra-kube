@@ -1,5 +1,17 @@
-# Lê o output function_url do repositório serverless para apontar a rota do Kong à Lambda.
+# Rotas JWT do Kong são opt-in (var.enable_kong_jwt_routes) porque dependem do output
+# function_url do repositório serverless — que só existe depois que ele é implantado, e
+# o serverless por sua vez depende deste repositório (VPC/EKS). Isso quebraria o "bootstrap"
+# (a 1ª aplicação nunca teria o remote state do serverless para ler) se fosse incondicional.
+#
+# Ordem de implantação:
+#   1. infra-kube    (enable_kong_jwt_routes = false, o padrão) — cria VPC/EKS/Kong/Konga
+#   2. infra-data    — RDS
+#   3. serverless    — Lambda (usa outputs do infra-kube e do infra-data)
+#   4. infra-kube de novo, agora com enable_kong_jwt_routes = true — liga as rotas JWT
+
 data "terraform_remote_state" "serverless" {
+  count = var.enable_kong_jwt_routes ? 1 : 0
+
   backend = "s3"
 
   config = {
@@ -10,13 +22,15 @@ data "terraform_remote_state" "serverless" {
 }
 
 locals {
-  lambda_function_url = data.terraform_remote_state.serverless.outputs.function_url
+  lambda_function_url = var.enable_kong_jwt_routes ? data.terraform_remote_state.serverless[0].outputs.function_url : null
   # "iss" que a Lambda grava no JWT (src/handler.js) — é assim que o plugin jwt do Kong
   # descobre qual consumer/credencial usar para validar a assinatura do token.
   kong_jwt_consumer_key = "oficina-mecanica-app"
 }
 
 resource "kubernetes_secret" "kong_jwt" {
+  count = var.enable_kong_jwt_routes ? 1 : 0
+
   metadata {
     name      = "kong-jwt-secret"
     namespace = kubernetes_namespace.kong.metadata[0].name
@@ -30,6 +44,8 @@ resource "kubernetes_secret" "kong_jwt" {
 # Admin API do Kong é ClusterIP (não exposta fora do cluster, de propósito), então a
 # configuração de Services/Routes/Consumer/plugin roda de dentro do cluster via Job.
 resource "kubernetes_job" "kong_routes" {
+  count = var.enable_kong_jwt_routes ? 1 : 0
+
   metadata {
     name      = "kong-routes-config"
     namespace = kubernetes_namespace.kong.metadata[0].name
@@ -62,7 +78,7 @@ resource "kubernetes_job" "kong_routes" {
             name = "JWT_SECRET"
             value_from {
               secret_key_ref {
-                name = kubernetes_secret.kong_jwt.metadata[0].name
+                name = kubernetes_secret.kong_jwt[0].metadata[0].name
                 key  = "JWT_SECRET"
               }
             }
