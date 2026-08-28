@@ -83,6 +83,28 @@ terraform apply
 > terraform apply
 > ```
 
+### Ordem de implantação entre repositórios
+
+`kong-routes.tf` configura a rota pública de login e a rota protegida por JWT apontando para
+a Lambda do repositório `serverless` (lida via `terraform_remote_state`) — mas esse output só
+existe depois que o serverless é implantado, que por sua vez depende da VPC deste repositório.
+Para não travar o bootstrap, essas rotas são opcionais (`var.enable_kong_jwt_routes`, padrão
+`false`). Ordem completa:
+
+```bash
+# 1. infra-kube (este repo) — enable_kong_jwt_routes=false (padrão), cria VPC/EKS/Kong/Konga
+terraform apply
+
+# 2. infra-data — RDS
+# 3. serverless — Lambda (usa outputs do infra-kube e do infra-data)
+
+# 4. infra-kube de novo, agora ligando as rotas JWT
+terraform apply -var="enable_kong_jwt_routes=true"
+```
+
+No workflow do GitHub Actions (`.github/workflows/terraform.yml`), isso é o input booleano
+`enable_kong_jwt_routes` do `workflow_dispatch`.
+
 ### Acessando o cluster
 
 ```bash
@@ -97,11 +119,13 @@ kubectl -n kong port-forward svc/konga 1337:1337
 ```
 
 Abra `http://localhost:1337`, crie o usuário admin no primeiro acesso e conecte-o ao Kong
-usando a Admin API interna: `http://kong-admin.kong.svc.cluster.local:8001`.
+usando a Admin API interna: `https://kong-admin.kong.svc.cluster.local:8444`.
 
 ### Roteando tráfego para os serviços da oficina
 
-Depois que o Kong estiver de pé, os `Services`/`Routes`/`Upstreams` que apontam para a aplicação
-principal (`soat-fiap-oficina-mecanica`, neste mesmo cluster) e para as funções serverless
-(`soat-fiap-oficina-mecanica-serverless`, em Lambda) são configurados via Konga (UI) ou pela
-Admin API do Kong — não fazem parte deste módulo Terraform.
+A rota pública de login (`/auth/cpf`) e a rota protegida por JWT (`/me`), ambas apontando para
+a Lambda de autenticação do repositório `serverless`, são provisionadas por este módulo
+(`kong-routes.tf`, opt-in via `var.enable_kong_jwt_routes` — ver "Ordem de implantação" acima).
+
+Rotas para a aplicação principal (`soat-fiap-oficina-mecanica`, neste mesmo cluster) não fazem
+parte deste módulo Terraform — configure-as via Konga (UI) ou diretamente pela Admin API do Kong.
