@@ -1,0 +1,145 @@
+name: Terraform — Cluster Kubernetes (EKS)
+
+# ── Triggers ──────────────────────────────────────────────────────────────────
+on:
+  # Disparo 100% manual — nenhum push/PR aciona plan/apply/destroy automaticamente.
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Ação a executar'
+        required: true
+        default: 'plan'
+        type: choice
+        options: [plan, apply, destroy]
+      environment:
+        description: 'Ambiente alvo'
+        required: true
+        default: 'dev'
+        type: choice
+        options: [dev, staging, prod]
+
+# ── Variáveis globais ──────────────────────────────────────────────────────────
+# Secrets (Settings → Secrets):   AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY,
+#                                  NEWRELIC_API_KEY, NEWRELIC_LICENSE_KEY
+# Variables (Settings → Variables): AWS_REGION, TF_STATE_BUCKET, CLUSTER_NAME,
+#                                    NEWRELIC_ACCOUNT_ID, NEWRELIC_NOTIFICATION_EMAIL
+env:
+  AWS_REGION:                  ${{ vars.AWS_REGION || 'us-east-1' }}
+  TF_STATE_BUCKET:             ${{ vars.TF_STATE_BUCKET }}
+  CLUSTER_NAME:                ${{ vars.CLUSTER_NAME || format('oficina-mecanica-{0}', github.event.inputs.environment) }}
+  TF_VAR_newrelic_account_id:  ${{ vars.NEWRELIC_ACCOUNT_ID }}
+  TF_VAR_newrelic_api_key:     ${{ secrets.NEWRELIC_API_KEY }}
+  TF_VAR_newrelic_license_key: ${{ secrets.NEWRELIC_LICENSE_KEY }}
+  TF_VAR_newrelic_notification_email: ${{ vars.NEWRELIC_NOTIFICATION_EMAIL }}
+
+jobs:
+  terraform:
+    name: Terraform ${{ github.event.inputs.action }} (${{ github.event.inputs.environment }})
+    runs-on: ubuntu-latest
+    environment: oficina-prd
+
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4.2.2
+
+      - name: Configurar credenciais AWS
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: '~1.9'
+
+      - name: Terraform Init
+        run: |
+          terraform init -input=false \
+            -backend-config="bucket=${{ env.TF_STATE_BUCKET }}" \
+            -backend-config="key=oficina-mecanica/infra-kube/terraform.tfstate" \
+            -backend-config="region=${{ env.AWS_REGION }}"
+
+      - name: Terraform Validate
+        run: terraform validate
+
+      # ── Plan ─────────────────────────────────────────────────────────────
+      - name: Terraform Plan
+        if: github.event.inputs.action == 'plan'
+        run: |
+          terraform plan -input=false \
+            -var="environment=${{ github.event.inputs.environment }}"
+
+      # ── Apply ────────────────────────────────────────────────────────────
+      # Bootstrap em 2 etapas: os providers kubernetes/helm dependem de outputs
+      # do module.eks, que não existem no primeiro apply (cluster ainda não existe).
+      - name: Terraform Apply — Etapa 1 (VPC + EKS)
+        if: github.event.inputs.action == 'apply'
+        run: |
+          terraform apply -input=false -auto-approve \
+            -var="environment=${{ github.event.inputs.environment }}" \
+            -target=module.vpc -target=module.eks
+
+      - name: Configurar kubectl
+        if: github.event.inputs.action == 'apply' || github.event.inputs.action == 'destroy'
+        run: aws eks update-kubeconfig --region "${{ env.AWS_REGION }}" --name "${{ env.CLUSTER_NAME }}"
+
+      # EKS não vem com o addon EBS CSI nem hop-limit de IMDS>=2 por padrão — sem
+      # isso, nenhuma PersistentVolumeClaim (Kong/Konga) consegue bindar.
+      - name: Habilitar EBS CSI driver + IMDS hop-limit (pré-requisito de PVC)
+        if: github.event.inputs.action == 'apply'
+        run: |
+          ROLE_NAME=$(terraform output -raw node_role_name 2>/dev/null || echo "${{ env.CLUSTER_NAME }}-eks-node-role")
+          aws iam attach-role-policy --role-name "$ROLE_NAME" \
+            --policy-arn arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy || true
+          aws eks create-addon --cluster-name "${{ env.CLUSTER_NAME }}" \
+            --addon-name aws-ebs-csi-driver --region "${{ env.AWS_REGION }}" \
+            --resolve-conflicts OVERWRITE || true
+          aws eks wait addon-active --cluster-name "${{ env.CLUSTER_NAME }}" \
+            --addon-name aws-ebs-csi-driver --region "${{ env.AWS_REGION }}"
+
+          for INSTANCE_ID in $(aws ec2 describe-instances --region "${{ env.AWS_REGION }}" \
+              --filters "Name=tag:eks:cluster-name,Values=${{ env.CLUSTER_NAME }}" "Name=instance-state-name,Values=running" \
+              --query "Reservations[].Instances[].InstanceId" --output text); do
+            aws ec2 modify-instance-metadata-options --instance-id "$INSTANCE_ID" \
+              --http-put-response-hop-limit 2 --region "${{ env.AWS_REGION }}"
+          done
+
+          kubectl patch storageclass gp2 -p '{"metadata": {"annotations":{"storageclass.kubernetes.io/is-default-class":"true"}}}'
+
+      - name: Terraform Apply — Etapa 2 (Kong, Konga, New Relic)
+        if: github.event.inputs.action == 'apply'
+        run: |
+          terraform apply -input=false -auto-approve \
+            -var="environment=${{ github.event.inputs.environment }}"
+
+      # ── Destroy ──────────────────────────────────────────────────────────
+      # Kong/Konga são desinstalados antes do cluster para o controller liberar
+      # o LoadBalancer (ELB) — destruir o cluster primeiro deixaria o LB órfão.
+      - name: Remover Kong/Konga antes do cluster
+        if: github.event.inputs.action == 'destroy'
+        run: |
+          helm uninstall kong -n kong || true
+          kubectl delete namespace kong newrelic --ignore-not-found
+          ROLE_NAME=$(terraform output -raw node_role_name 2>/dev/null || echo "${{ env.CLUSTER_NAME }}-eks-node-role")
+          aws iam detach-role-policy --role-name "$ROLE_NAME" \
+            --policy-arn arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy || true
+
+      - name: Terraform Destroy
+        if: github.event.inputs.action == 'destroy'
+        run: |
+          terraform destroy -input=false -auto-approve \
+            -var="environment=${{ github.event.inputs.environment }}"
+
+      - name: Resumo
+        if: always()
+        run: |
+          echo "### Terraform ${{ github.event.inputs.action }} — infra-kube" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Campo | Valor |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Ambiente | \`${{ github.event.inputs.environment }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Cluster | \`${{ env.CLUSTER_NAME }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Ação | \`${{ github.event.inputs.action }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Status | ${{ job.status }} |" >> $GITHUB_STEP_SUMMARY
