@@ -98,7 +98,7 @@ jobs:
       - name: Habilitar EBS CSI driver + IMDS hop-limit (pré-requisito de PVC)
         if: github.event.inputs.action == 'apply'
         run: |
-          ROLE_NAME=$(terraform output -raw node_role_name 2>/dev/null || echo "${{ env.CLUSTER_NAME }}-eks-node-role")
+          ROLE_NAME=$(terraform output -raw node_role_name)
           aws iam attach-role-policy --role-name "$ROLE_NAME" \
             --policy-arn arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy || true
           aws eks create-addon --cluster-name "${{ env.CLUSTER_NAME }}" \
@@ -130,7 +130,7 @@ jobs:
         run: |
           helm uninstall kong -n kong || true
           kubectl delete namespace kong newrelic --ignore-not-found
-          ROLE_NAME=$(terraform output -raw node_role_name 2>/dev/null || echo "${{ env.CLUSTER_NAME }}-eks-node-role")
+          ROLE_NAME=$(terraform output -raw node_role_name)
           aws iam detach-role-policy --role-name "$ROLE_NAME" \
             --policy-arn arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy || true
 
