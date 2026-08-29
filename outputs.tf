@@ -43,6 +43,11 @@ output "cluster_security_group_id" {
   value       = module.eks.cluster_security_group_id
 }
 
+output "node_role_name" {
+  description = "Nome do IAM Role dos worker nodes. Usado pelo pipeline de CI/CD para anexar/desanexar a policy do EBS CSI."
+  value       = module.eks.node_role_name
+}
+
 output "kubeconfig_command" {
   description = "Comando para configurar kubectl apontando para este cluster"
   value       = "aws eks update-kubeconfig --region ${var.aws_region} --name ${module.eks.cluster_name}"
