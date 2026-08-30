@@ -86,7 +86,11 @@ resource "newrelic_one_dashboard" "oficina" {
 
       nrql_query {
         account_id = var.newrelic_account_id
-        query      = "SELECT percentage(count(*), WHERE numeric(response.status) < 500) FROM Transaction WHERE appName = '${var.newrelic_app_name}' SINCE 1 day ago"
+        # response.status não existe no agente Node.js — o atributo real é
+        # http.statusCode (confirmado via SELECT keyset() FROM Transaction).
+        # Com o nome errado, a condição do WHERE nunca batia e o painel sempre
+        # mostrava 0%, mesmo com 100% das requisições < 500.
+        query = "SELECT percentage(count(*), WHERE numeric(http.statusCode) < 500) FROM Transaction WHERE appName = '${var.newrelic_app_name}' SINCE 1 day ago"
       }
     }
   }
