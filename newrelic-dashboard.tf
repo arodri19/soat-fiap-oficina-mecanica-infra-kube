@@ -22,8 +22,12 @@ resource "newrelic_one_dashboard" "oficina" {
       }
     }
 
-    widget_bar {
-      title  = "Tempo medio de execucao por status (segundos)"
+    # widget_table (não widget_bar) porque só table/billboard suportam o bloco
+    # data_format — é ele que faz a New Relic formatar o número (segundos) como
+    # "1h 23m 45s" em vez de um valor bruto, já que um serviço de oficina demora
+    # horas, não segundos.
+    widget_table {
+      title  = "Tempo medio de execucao por status"
       row    = 1
       column = 5
       width  = 8
@@ -32,6 +36,11 @@ resource "newrelic_one_dashboard" "oficina" {
       nrql_query {
         account_id = var.newrelic_account_id
         query      = "SELECT average(secondsInPreviousStatus) FROM OrderStatusChanged FACET fromStatus SINCE 1 week ago"
+      }
+
+      data_format {
+        name = "Average secondsInPreviousStatus"
+        type = "duration"
       }
     }
 
