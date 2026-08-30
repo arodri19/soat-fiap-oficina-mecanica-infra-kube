@@ -43,36 +43,9 @@ output "cluster_security_group_id" {
   value       = module.eks.cluster_security_group_id
 }
 
-output "node_role_name" {
-  description = "Nome do IAM Role dos worker nodes. Usado pelo pipeline de CI/CD para anexar/desanexar a policy do EBS CSI."
-  value       = module.eks.node_role_name
-}
-
 output "kubeconfig_command" {
   description = "Comando para configurar kubectl apontando para este cluster"
   value       = "aws eks update-kubeconfig --region ${var.aws_region} --name ${module.eks.cluster_name}"
-}
-
-# ── API Gateway (Kong + Konga) ─────────────────────────────────────────────────
-
-output "kong_namespace" {
-  description = "Namespace onde o Kong e o Konga foram instalados."
-  value       = kubernetes_namespace.kong.metadata[0].name
-}
-
-output "kong_proxy_service" {
-  description = "DNS interno do Service do Kong Proxy (porta de entrada do tráfego roteado pela API Gateway)."
-  value       = "kong-proxy.${kubernetes_namespace.kong.metadata[0].name}.svc.cluster.local"
-}
-
-output "kong_admin_service" {
-  description = "DNS interno da Admin API do Kong. Não é exposta fora do cluster; use kubectl port-forward para acessá-la."
-  value       = "kong-admin.${kubernetes_namespace.kong.metadata[0].name}.svc.cluster.local:8001"
-}
-
-output "konga_service" {
-  description = "DNS interno do Konga (UI de administração). Use kubectl port-forward para acessar localmente."
-  value       = "konga.${kubernetes_namespace.kong.metadata[0].name}.svc.cluster.local:1337"
 }
 
 # ── Observabilidade (New Relic) ─────────────────────────────────────────────────

@@ -17,24 +17,15 @@ on:
         default: 'dev'
         type: choice
         options: [dev, staging, prod]
-      enable_kong_jwt_routes:
-        description: 'Ligar rotas JWT do Kong (só depois que o repositório serverless já estiver implantado — veja kong-routes.tf)'
-        required: true
-        default: false
-        type: boolean
 
 # ── Variáveis globais ──────────────────────────────────────────────────────────
 # Secrets (Settings → Secrets):   AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY,
-#                                  NEWRELIC_API_KEY, NEWRELIC_LICENSE_KEY, JWT_SECRET
+#                                  NEWRELIC_API_KEY, NEWRELIC_LICENSE_KEY
 # Variables (Settings → Variables): AWS_REGION, TF_STATE_BUCKET, CLUSTER_NAME,
 #                                    NEWRELIC_ACCOUNT_ID, NEWRELIC_NOTIFICATION_EMAIL
 env:
   AWS_REGION:                  ${{ vars.AWS_REGION || 'us-east-1' }}
   TF_STATE_BUCKET:             ${{ vars.TF_STATE_BUCKET }}
-  CLUSTER_NAME:                ${{ vars.CLUSTER_NAME || format('oficina-mecanica-{0}', github.event.inputs.environment) }}
-  TF_VAR_tf_state_bucket:      ${{ vars.TF_STATE_BUCKET }}
-  TF_VAR_enable_kong_jwt_routes: ${{ github.event.inputs.enable_kong_jwt_routes }}
-  TF_VAR_jwt_secret:           ${{ secrets.JWT_SECRET }}
   TF_VAR_newrelic_account_id:  ${{ vars.NEWRELIC_ACCOUNT_ID }}
   TF_VAR_newrelic_api_key:     ${{ secrets.NEWRELIC_API_KEY }}
   TF_VAR_newrelic_license_key: ${{ secrets.NEWRELIC_LICENSE_KEY }}
@@ -80,8 +71,9 @@ jobs:
             -var="environment=${{ github.event.inputs.environment }}"
 
       # ── Apply ────────────────────────────────────────────────────────────
-      # Bootstrap em 2 etapas: os providers kubernetes/helm dependem de outputs
-      # do module.eks, que não existem no primeiro apply (cluster ainda não existe).
+      # Bootstrap em 2 etapas: os providers kubernetes/helm (usados pelo monitoramento
+      # de cluster do New Relic, newrelic-k8s.tf) dependem de outputs do module.eks,
+      # que não existem no primeiro apply (cluster ainda não existe).
       - name: Terraform Apply — Etapa 1 (VPC + EKS)
         if: github.event.inputs.action == 'apply'
         run: |
@@ -89,51 +81,13 @@ jobs:
             -var="environment=${{ github.event.inputs.environment }}" \
             -target=module.vpc -target=module.eks
 
-      - name: Configurar kubectl
-        if: github.event.inputs.action == 'apply' || github.event.inputs.action == 'destroy'
-        run: aws eks update-kubeconfig --region "${{ env.AWS_REGION }}" --name "${{ env.CLUSTER_NAME }}"
-
-      # EKS não vem com o addon EBS CSI nem hop-limit de IMDS>=2 por padrão — sem
-      # isso, nenhuma PersistentVolumeClaim (Kong/Konga) consegue bindar.
-      - name: Habilitar EBS CSI driver + IMDS hop-limit (pré-requisito de PVC)
-        if: github.event.inputs.action == 'apply'
-        run: |
-          ROLE_NAME=$(terraform output -raw node_role_name)
-          aws iam attach-role-policy --role-name "$ROLE_NAME" \
-            --policy-arn arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy || true
-          aws eks create-addon --cluster-name "${{ env.CLUSTER_NAME }}" \
-            --addon-name aws-ebs-csi-driver --region "${{ env.AWS_REGION }}" \
-            --resolve-conflicts OVERWRITE || true
-          aws eks wait addon-active --cluster-name "${{ env.CLUSTER_NAME }}" \
-            --addon-name aws-ebs-csi-driver --region "${{ env.AWS_REGION }}"
-
-          for INSTANCE_ID in $(aws ec2 describe-instances --region "${{ env.AWS_REGION }}" \
-              --filters "Name=tag:eks:cluster-name,Values=${{ env.CLUSTER_NAME }}" "Name=instance-state-name,Values=running" \
-              --query "Reservations[].Instances[].InstanceId" --output text); do
-            aws ec2 modify-instance-metadata-options --instance-id "$INSTANCE_ID" \
-              --http-put-response-hop-limit 2 --region "${{ env.AWS_REGION }}"
-          done
-
-          kubectl patch storageclass gp2 -p '{"metadata": {"annotations":{"storageclass.kubernetes.io/is-default-class":"true"}}}'
-
-      - name: Terraform Apply — Etapa 2 (Kong, Konga, New Relic)
+      - name: Terraform Apply — Etapa 2 (New Relic)
         if: github.event.inputs.action == 'apply'
         run: |
           terraform apply -input=false -auto-approve \
             -var="environment=${{ github.event.inputs.environment }}"
 
       # ── Destroy ──────────────────────────────────────────────────────────
-      # Kong/Konga são desinstalados antes do cluster para o controller liberar
-      # o LoadBalancer (ELB) — destruir o cluster primeiro deixaria o LB órfão.
-      - name: Remover Kong/Konga antes do cluster
-        if: github.event.inputs.action == 'destroy'
-        run: |
-          helm uninstall kong -n kong || true
-          kubectl delete namespace kong newrelic --ignore-not-found
-          ROLE_NAME=$(terraform output -raw node_role_name)
-          aws iam detach-role-policy --role-name "$ROLE_NAME" \
-            --policy-arn arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy || true
-
       - name: Terraform Destroy
         if: github.event.inputs.action == 'destroy'
         run: |
@@ -148,6 +102,5 @@ jobs:
           echo "| Campo | Valor |" >> $GITHUB_STEP_SUMMARY
           echo "|-------|-------|" >> $GITHUB_STEP_SUMMARY
           echo "| Ambiente | \`${{ github.event.inputs.environment }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| Cluster | \`${{ env.CLUSTER_NAME }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| Ação | \`${{ github.event.inputs.action }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| Status | ${{ job.status }} |" >> $GITHUB_STEP_SUMMARY
