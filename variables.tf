@@ -55,69 +55,6 @@ variable "node_max_size" {
   default     = 1
 }
 
-# ── API Gateway (Kong + Konga) ─────────────────────────────────────────────────
-
-variable "kong_namespace" {
-  description = "Namespace onde o Kong e o Konga serão instalados."
-  type        = string
-  default     = "kong"
-}
-
-variable "kong_chart_version" {
-  description = "Versão do chart Helm oficial do Kong (repositório https://charts.konghq.com)."
-  type        = string
-  default     = "2.44.0"
-}
-
-variable "kong_proxy_service_type" {
-  description = "Tipo do Service Kubernetes exposto pelo Kong Proxy (porta de entrada do tráfego da API)."
-  type        = string
-  default     = "LoadBalancer"
-
-  validation {
-    condition     = contains(["ClusterIP", "NodePort", "LoadBalancer"], var.kong_proxy_service_type)
-    error_message = "kong_proxy_service_type deve ser ClusterIP, NodePort ou LoadBalancer."
-  }
-}
-
-variable "kong_postgres_storage_size" {
-  description = "Tamanho do volume persistente do Postgres dedicado ao Kong (armazena rotas, services e plugins)."
-  type        = string
-  default     = "2Gi"
-}
-
-variable "konga_image_tag" {
-  description = "Tag da imagem Docker do Konga (UI de administração do Kong)."
-  type        = string
-  default     = "0.14.9"
-}
-
-variable "konga_storage_size" {
-  description = "Tamanho do volume persistente usado pelo Konga para guardar seu próprio estado (usuários, snapshots)."
-  type        = string
-  default     = "1Gi"
-}
-
-# ── Rotas autenticadas (plugin JWT) ─────────────────────────────────────────────
-
-variable "tf_state_bucket" {
-  description = "Bucket S3 onde o state do repositório serverless está armazenado (lê o output function_url para configurar a rota no Kong)."
-  type        = string
-}
-
-variable "jwt_secret" {
-  description = "Segredo HS256 usado pelo plugin jwt do Kong para validar os tokens — deve ser o MESMO configurado no repositório serverless (TF_VAR_jwt_secret)."
-  type        = string
-  sensitive   = true
-  default     = "" # só é lido quando enable_kong_jwt_routes = true
-}
-
-variable "enable_kong_jwt_routes" {
-  description = "Liga as rotas do Kong (login público + rota protegida por JWT) apontando para a Lambda do repositório serverless. Deixe false na 1ª aplicação (bootstrap) — o output function_url do serverless ainda não existe — e mude para true numa 2ª aplicação, depois que o serverless já estiver implantado."
-  type        = bool
-  default     = false
-}
-
 # ── Observabilidade (New Relic) ─────────────────────────────────────────────────
 
 variable "newrelic_account_id" {
