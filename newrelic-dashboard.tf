@@ -22,13 +22,15 @@ resource "newrelic_one_dashboard" "oficina" {
       }
     }
 
-    # O número bruto em segundos é ilegível pra um serviço de oficina, que demora
-    # horas — mas NRQL não formata duração (o data_format do New Relic exige
-    # adivinhar o nome exato da coluna gerada pela query, o que não dá pra validar
-    # sem abrir o dashboard, e na prática não funcionou). Em vez disso, a aplicação
-    # já formata "1h 15m 30s" no momento do evento (ver secondsInPreviousStatusLabel,
-    # calculado em src/infrastructure/monitoring/newrelicEvents.js) — o dashboard só
-    # exibe essa string, sem depender de nenhuma formatação do lado da New Relic.
+    # NRQL não tem operador de módulo — não dá pra montar "1h 15m 30s" a partir de
+    # um average() dentro da própria query (testado: "%" dá erro de sintaxe). E o
+    # data_format (type=duration) do widget exige adivinhar o nome exato da coluna
+    # gerada pela query, o que não dá pra validar sem abrir o dashboard — na prática
+    # não funcionou. Por isso a MÉDIA REAL é calculada e formatada fora do NRQL:
+    # POST /api/metrics/status-duration-averages/recompute (repositório
+    # soat-fiap-oficina-mecanica) consulta a própria New Relic (average() sobre o
+    # histórico), formata como "1h 15m", e republica um evento por status
+    # (OrderStatusAverageDuration) — aqui só exibimos o snapshot mais recente disso.
     widget_table {
       title  = "Tempo medio de execucao por status"
       row    = 1
@@ -38,7 +40,7 @@ resource "newrelic_one_dashboard" "oficina" {
 
       nrql_query {
         account_id = var.newrelic_account_id
-        query      = "SELECT average(secondsInPreviousStatus) AS 'Media (segundos)', latest(secondsInPreviousStatusLabel) AS 'Ultima transicao' FROM OrderStatusChanged FACET fromStatus SINCE 1 week ago"
+        query      = "SELECT latest(averageSeconds) AS 'Media (segundos)', latest(averageLabel) AS 'Media formatada' FROM OrderStatusAverageDuration FACET fromStatus SINCE 1 day ago"
       }
     }
 
