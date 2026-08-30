@@ -33,8 +33,3 @@ output "node_role_arn" {
   description = "ARN do IAM Role dos worker nodes"
   value       = aws_iam_role.eks_node.arn
 }
-
-output "node_role_name" {
-  description = "Nome do IAM Role dos worker nodes (usado pelo CI/CD para anexar/desanexar a policy do EBS CSI)"
-  value       = aws_iam_role.eks_node.name
-}
