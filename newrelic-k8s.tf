@@ -15,6 +15,12 @@ resource "helm_release" "newrelic_bundle" {
   chart      = "nri-bundle"
   version    = var.newrelic_k8s_chart_version
 
+  # Padrão (300s) é curto para esse chart: sobe vários componentes, incluindo um
+  # DaemonSet por node — com pull de imagem "frio" em cluster recém-criado, passa
+  # fácil de 5min. Se ainda assim estourar, os pods costumam já estar saudáveis
+  # (só o "wait" do Helm demorou) — rodar o apply de novo resolve.
+  timeout = 600
+
   values = [
     yamlencode({
       global = {

@@ -81,11 +81,25 @@ jobs:
             -var="environment=${{ github.event.inputs.environment }}" \
             -target=module.vpc -target=module.eks
 
+      # Retry: o chart nri-bundle sobe um DaemonSet por node + vários outros
+      # componentes — com pull de imagem "frio", o wait do Helm ocasionalmente
+      # estoura o timeout mesmo com os pods ficando saudáveis logo em seguida.
+      # Uma 2ª tentativa (helm upgrade sobre o release já existente) costuma
+      # passar rápido, sem precisar de intervenção manual.
       - name: Terraform Apply — Etapa 2 (New Relic)
         if: github.event.inputs.action == 'apply'
         run: |
-          terraform apply -input=false -auto-approve \
-            -var="environment=${{ github.event.inputs.environment }}"
+          for attempt in 1 2; do
+            echo "::group::Tentativa $attempt"
+            if terraform apply -input=false -auto-approve \
+                -var="environment=${{ github.event.inputs.environment }}"; then
+              echo "::endgroup::"
+              exit 0
+            fi
+            echo "::endgroup::"
+            echo "::warning::Tentativa $attempt falhou."
+          done
+          exit 1
 
       # ── Destroy ──────────────────────────────────────────────────────────
       - name: Terraform Destroy
