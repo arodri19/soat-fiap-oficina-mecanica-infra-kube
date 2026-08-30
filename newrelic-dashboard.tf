@@ -22,10 +22,13 @@ resource "newrelic_one_dashboard" "oficina" {
       }
     }
 
-    # widget_table (não widget_bar) porque só table/billboard suportam o bloco
-    # data_format — é ele que faz a New Relic formatar o número (segundos) como
-    # "1h 23m 45s" em vez de um valor bruto, já que um serviço de oficina demora
-    # horas, não segundos.
+    # O número bruto em segundos é ilegível pra um serviço de oficina, que demora
+    # horas — mas NRQL não formata duração (o data_format do New Relic exige
+    # adivinhar o nome exato da coluna gerada pela query, o que não dá pra validar
+    # sem abrir o dashboard, e na prática não funcionou). Em vez disso, a aplicação
+    # já formata "1h 15m 30s" no momento do evento (ver secondsInPreviousStatusLabel,
+    # calculado em src/infrastructure/monitoring/newrelicEvents.js) — o dashboard só
+    # exibe essa string, sem depender de nenhuma formatação do lado da New Relic.
     widget_table {
       title  = "Tempo medio de execucao por status"
       row    = 1
@@ -35,12 +38,7 @@ resource "newrelic_one_dashboard" "oficina" {
 
       nrql_query {
         account_id = var.newrelic_account_id
-        query      = "SELECT average(secondsInPreviousStatus) FROM OrderStatusChanged FACET fromStatus SINCE 1 week ago"
-      }
-
-      data_format {
-        name = "Average secondsInPreviousStatus"
-        type = "duration"
+        query      = "SELECT average(secondsInPreviousStatus) AS 'Media (segundos)', latest(secondsInPreviousStatusLabel) AS 'Ultima transicao' FROM OrderStatusChanged FACET fromStatus SINCE 1 week ago"
       }
     }
 
