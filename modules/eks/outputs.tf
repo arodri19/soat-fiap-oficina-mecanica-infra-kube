@@ -33,3 +33,8 @@ output "node_role_arn" {
   description = "ARN do IAM Role dos worker nodes"
   value       = aws_iam_role.eks_node.arn
 }
+
+output "node_role_name" {
+  description = "Nome do IAM Role dos worker nodes — os microsserviços (Fase 4) anexam a ele as policies de acesso às próprias filas SQS/tabelas DynamoDB"
+  value       = aws_iam_role.eks_node.name
+}
