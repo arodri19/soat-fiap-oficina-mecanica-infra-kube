@@ -13,7 +13,7 @@ resource "newrelic_nrql_alert_condition" "order_processing_errors" {
   enabled   = true
 
   nrql {
-    query = "SELECT count(*) FROM TransactionError WHERE appName = '${var.newrelic_app_name}' AND request.uri LIKE '%/orders%'"
+    query = "SELECT count(*) FROM TransactionError WHERE appName IN (${local.nr_app_names}) AND request.uri LIKE '%/orders%'"
   }
 
   critical {
@@ -26,6 +26,58 @@ resource "newrelic_nrql_alert_condition" "order_processing_errors" {
   warning {
     operator              = "above"
     threshold             = 1
+    threshold_duration    = 300
+    threshold_occurrences = "at_least_once"
+  }
+
+  fill_option = "none"
+}
+
+# Fase 4: compensação que falhou (ex: estorno recusado pelo Mercado Pago) deixa a
+# saga em FAILED — exige intervenção manual, então qualquer ocorrência é crítica.
+resource "newrelic_nrql_alert_condition" "saga_failed" {
+  policy_id = newrelic_alert_policy.order_processing.id
+  type      = "static"
+  name      = "Saga de OS falhou (compensacao nao concluida)"
+  enabled   = true
+
+  nrql {
+    query = "SELECT count(*) FROM SagaFailed"
+  }
+
+  critical {
+    operator              = "above"
+    threshold             = 0
+    threshold_duration    = 60
+    threshold_occurrences = "at_least_once"
+  }
+
+  fill_option        = "none"
+  aggregation_window = 60
+}
+
+# Pico de compensações costuma indicar problema num participante (billing fora,
+# Mercado Pago recusando, exec-prod lotado) — aviso para investigar.
+resource "newrelic_nrql_alert_condition" "saga_compensations_spike" {
+  policy_id = newrelic_alert_policy.order_processing.id
+  type      = "static"
+  name      = "Pico de compensacoes da saga de OS"
+  enabled   = true
+
+  nrql {
+    query = "SELECT count(*) FROM SagaCompensationStarted"
+  }
+
+  warning {
+    operator              = "above"
+    threshold             = 3
+    threshold_duration    = 300
+    threshold_occurrences = "at_least_once"
+  }
+
+  critical {
+    operator              = "above"
+    threshold             = 10
     threshold_duration    = 300
     threshold_occurrences = "at_least_once"
   }

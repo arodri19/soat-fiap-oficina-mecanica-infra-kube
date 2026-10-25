@@ -43,6 +43,11 @@ output "cluster_security_group_id" {
   value       = module.eks.cluster_security_group_id
 }
 
+output "node_role_name" {
+  description = "IAM Role dos worker nodes. Consumido pelo Terraform de cada microsserviço (os-service, billing-service, exec-prod) via terraform_remote_state para anexar as policies de SQS/DynamoDB."
+  value       = module.eks.node_role_name
+}
+
 output "kubeconfig_command" {
   description = "Comando para configurar kubectl apontando para este cluster"
   value       = "aws eks update-kubeconfig --region ${var.aws_region} --name ${module.eks.cluster_name}"

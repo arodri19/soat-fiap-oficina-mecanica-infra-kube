@@ -170,6 +170,32 @@ resource "aws_eks_cluster" "main" {
   }
 }
 
+# ── Launch Template dos nodes ─────────────────────────────────────────────────
+# Recurso: aws_launch_template
+# A AMI AL2023 do EKS sobe com IMDSv2 e hop limit = 1: só o próprio node alcança o
+# metadata service. Pods ficam um "salto" de rede a mais e NÃO conseguem obter as
+# credenciais do IAM Role do node — os microsserviços da Fase 4 (SQS/DynamoDB via
+# AWS SDK) falhavam com "Could not load credentials from any providers".
+# hop limit = 2 libera o acesso aos pods mantendo o IMDSv2 obrigatório (tokens).
+
+resource "aws_launch_template" "nodes" {
+  name_prefix = "${local.name}-nodes-"
+  description = "Nodes EKS — IMDSv2 com hop limit 2 (credenciais do node role para os pods)"
+
+  metadata_options {
+    http_endpoint               = "enabled"
+    http_tokens                 = "required"
+    http_put_response_hop_limit = 2
+  }
+
+  tag_specifications {
+    resource_type = "instance"
+    tags = {
+      Name = "${local.name}-node"
+    }
+  }
+}
+
 # ── EKS Managed Node Group ────────────────────────────────────────────────────
 # Recurso: aws_eks_node_group
 # AWS gerencia o ciclo de vida dos nodes (provisionamento, atualizações, drain).
@@ -184,6 +210,11 @@ resource "aws_eks_node_group" "main" {
   instance_types = [var.node_instance_type]
   ami_type       = "AL2023_x86_64_STANDARD" # Amazon Linux 2023 (AL2 é descontinuado em 26/11/2025)
   capacity_type  = "ON_DEMAND"              # SPOT reduz custo em 60-70% com menos garantia
+
+  launch_template {
+    id      = aws_launch_template.nodes.id
+    version = aws_launch_template.nodes.latest_version
+  }
 
   scaling_config {
     desired_size = var.node_desired_size
