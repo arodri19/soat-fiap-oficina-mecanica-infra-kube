@@ -91,3 +91,30 @@ aws eks update-kubeconfig --region us-east-1 --name oficina-mecanica-dev
 2. **infra-data** — RDS
 3. **serverless** — Lambda de autenticação + API Gateway (usa outputs do infra-kube e do infra-data)
 4. **soat-fiap-oficina-mecanica** (app principal) — deploy no cluster criado no passo 1
+
+## Fase 4 — microsserviços
+
+O cluster agora hospeda três microsserviços (namespace `oficina-mecanica`), cada um com
+repositório, pipeline e Terraform próprios:
+[os-service](https://github.com/arodri19/soat-fiap-oficina-mecanica-os-service) ·
+[billing-service](https://github.com/arodri19/soat-fiap-oficina-mecanica-billing-service) ·
+[exec-prod](https://github.com/arodri19/soat-fiap-oficina-mecanica-exec-prod).
+
+Mudanças neste repositório:
+
+- **Output `node_role_name`** — o Terraform de cada microsserviço lê esse output via
+  `terraform_remote_state` e anexa ao role dos nodes a policy de acesso às **suas** filas SQS
+  e tabelas DynamoDB (menor privilégio por serviço).
+- **Node group `t3.medium` × 2** (antes `t3.small` × 1): com o VPC CNI o limite de pods por
+  node vem das ENIs (`t3.small` = 11 pods, `t3.medium` = 17). kube-system + nri-bundle já
+  ocupam ~12 pods; os 3 serviços, rolling updates e o HPA precisam da folga.
+- **Dashboard**: nova página **"Saga e Microsservicos"** — sagas por desfecho (iniciadas,
+  concluídas, compensadas, falhas), motivos de compensação, etapas concluídas, pagamentos
+  Mercado Pago por status, fila de execução, mensagens SQS processadas por serviço, throughput
+  por serviço e traces distribuídos recentes. Os painéis existentes passam a filtrar pelos
+  três apps (`newrelic_app_names`).
+- **Alertas**: `SagaFailed` (compensação não concluída → crítico) e pico de
+  `SagaCompensationStarted`, no mesmo workflow de e-mail.
+
+Ordem de implantação: infra-kube → infra-data → serverless → os-service / billing-service /
+exec-prod (o CD de cada microsserviço cria as próprias filas e tabelas).

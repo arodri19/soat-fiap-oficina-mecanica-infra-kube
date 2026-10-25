@@ -31,16 +31,20 @@ variable "cluster_version" {
   default     = "1.30"
 }
 
+# Fase 4: 3 microsserviços (+ HPA) além do nri-bundle da New Relic. Com o VPC CNI,
+# o limite de pods por node vem do número de ENIs/IPs da instância: t3.small = 11
+# pods, t3.medium = 17. Só o kube-system + nri-bundle já ocupam ~12 — por isso
+# t3.medium e 2 nodes (espaço para rolling update e scale-up do HPA).
 variable "node_instance_type" {
   description = "Tipo de instância EC2 para os worker nodes"
   type        = string
-  default     = "t3.small"
+  default     = "t3.medium"
 }
 
 variable "node_desired_size" {
   description = "Quantidade desejada de worker nodes"
   type        = number
-  default     = 1
+  default     = 2
 }
 
 variable "node_min_size" {
@@ -52,7 +56,7 @@ variable "node_min_size" {
 variable "node_max_size" {
   description = "Quantidade máxima de worker nodes (teto do Cluster Autoscaler)"
   type        = number
-  default     = 1
+  default     = 3
 }
 
 # ── Observabilidade (New Relic) ─────────────────────────────────────────────────
@@ -80,10 +84,10 @@ variable "newrelic_license_key" {
   sensitive   = true
 }
 
-variable "newrelic_app_name" {
-  description = "Nome da aplicação no New Relic APM — deve bater com NEW_RELIC_APP_NAME configurado no repositório soat-fiap-oficina-mecanica"
-  type        = string
-  default     = "oficina-mecanica-api"
+variable "newrelic_app_names" {
+  description = "Nomes das aplicações no New Relic APM (um por microsserviço da Fase 4) — devem bater com NEW_RELIC_APP_NAME do ConfigMap de cada serviço"
+  type        = list(string)
+  default     = ["oficina-os-service", "oficina-billing-service", "oficina-exec-prod-service"]
 }
 
 variable "newrelic_k8s_chart_version" {
